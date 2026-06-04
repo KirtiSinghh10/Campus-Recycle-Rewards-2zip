@@ -2,6 +2,8 @@ import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useEffect, useRef } from "react";
+import { api } from "@/services/api";
+
 import {
   Animated,
   Platform,
@@ -18,7 +20,6 @@ import { Mascot } from "@/components/Mascot";
 import { useAuth, User } from "@/context/AuthContext";
 import { getDailyFact } from "@/constants/recyclingFacts";
 import {
-  getLevelInfo,
   getMultiplier,
   getTodaysChallenge,
 } from "@/constants/gamification";
@@ -139,21 +140,66 @@ function MiniLeaderRow({
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { user, allUsers } = useAuth();
+  const { user, allUsers,  refreshLeaderboard } = useAuth();
+   useEffect(() => {
+  refreshLeaderboard();
+}, []);
+  const [campusStats, setCampusStats] = React.useState({
+  totalSubmissions: 0,
+  totalPoints: 0,
+  totalBottles: 0,
+  totalCans: 0,
+  totalUsers: 0,
+});
 
   useEffect(() => {
-    requestNotificationPermissions().then((granted) => {
-      if (granted) scheduleDailyReminders();
-    });
-  }, []);
+  requestNotificationPermissions().then((granted) => {
+    if (granted) scheduleDailyReminders();
+  });
+}, []);
 
-  if (!user) return null;
+// 👇 ADD THIS HERE
+useEffect(() => {
+  async function loadCampusStats() {
+  
+    try {
+      const res = await api.get("/recycling/stats");
+
+      console.log("CAMPUS STATS", res.data);
+
+      setCampusStats({
+        totalSubmissions:
+          res.data.totalSubmissions || 0,
+
+        totalPoints:
+          res.data.totalPoints || 0,
+
+        totalBottles:
+          res.data.totalBottles || 0,
+
+        totalCans:
+          res.data.totalCans || 0,
+
+        totalUsers:
+          res.data.totalUsers || 0,
+      });
+    } catch (err) {
+      console.error(
+        "Failed loading campus analytics:",
+        err
+      );
+    }
+  }
+
+  loadCampusStats();
+}, []);
+
+if (!user) return null;
 
   // Safe Data Fallbacks
   const safeSessions = user.sessions || [];
   const safeAllUsers = allUsers || [];
 
-  const levelInfo = getLevelInfo(user.points || 0);
   const activityPoints = Math.floor((user.points || 0) / 10);
   const sorted = [...safeAllUsers].sort(
     (a, b) => (b.points || 0) - (a.points || 0),
@@ -175,18 +221,6 @@ export default function HomeScreen() {
   const hasBonus =
     multiplierInfo?.breakdown && multiplierInfo.breakdown.length > 0;
 
-  // Community stats computed with deep data checks
-  const totalCampusSessions = safeAllUsers.reduce(
-    (s, u) => s + (u?.totalSessions || 0),
-    0,
-  );
-  const totalCampusCO2 = safeAllUsers.reduce(
-    (s, u) => s + (u?.carbonReduced || 0),
-    0,
-  );
-  const activeUsersToday = safeAllUsers.filter(
-    (u) => u && u.lastSessionDate === today,
-  ).length;
 
   return (
     <ScrollView
@@ -218,7 +252,7 @@ export default function HomeScreen() {
               ]}
             >
               <Text style={styles.levelChipText}>
-                Lv.{levelInfo.level} · {levelInfo.title}
+                Lv.{user.level || 1} · {user.levelTitle || "Newbie"}
               </Text>
             </View>
             {userRank > 0 && (
@@ -242,7 +276,7 @@ export default function HomeScreen() {
             <View
               style={[
                 styles.progressBarFill,
-                { width: `${(levelInfo.progress || 0) * 100}%` },
+                { width: `${(user.levelProgressPercent || 0)}%` },
               ]}
             />
           </View>
@@ -250,9 +284,9 @@ export default function HomeScreen() {
             <Text style={styles.progressText}>
               {Math.max(
                 0,
-                levelInfo.nextLevelPoints - (user.points || 0),
+                (user.nextLevelPoints || 200) - (user.points || 0),
               ).toLocaleString()}{" "}
-              pts to Lv.{levelInfo.level + 1}
+              pts to Lv.{(user.level || 1) + 1}
             </Text>
             {(user.streak || 0) > 0 && (
               <View style={styles.streakPill}>
@@ -355,7 +389,7 @@ export default function HomeScreen() {
       </TouchableOpacity>
 
       {/* Mascot */}
-      <Mascot level={levelInfo.level} streak={user.streak || 0} />
+      <Mascot level={user.level || 1} streak={user.streak || 0} levelTitle={user.levelTitle || "Sapling"} />
 
       {/* Daily Fact */}
       {(() => {
@@ -422,34 +456,51 @@ export default function HomeScreen() {
       </View>
 
       {/* Campus Community Stats */}
-      <View style={[styles.campusCard, { backgroundColor: "#1E1B4B" }]}>
-        <View style={styles.campusHeader}>
-          <Feather name="globe" size={16} color="rgba(255,255,255,0.8)" />
-          <Text style={styles.campusTitle}>campus impact so far</Text>
-        </View>
-        <View style={styles.campusStats}>
-          <View style={styles.campusStat}>
-            <Text style={styles.campusStatVal}>
-              {totalCampusSessions.toLocaleString()}
-            </Text>
-            <Text style={styles.campusStatLabel}>Total Sessions</Text>
-          </View>
-          <View style={[styles.campusDivider]} />
-          <View style={styles.campusStat}>
-            <Text style={styles.campusStatVal}>
-              {totalCampusCO2.toFixed(1)} kg
-            </Text>
-            <Text style={styles.campusStatLabel}>CO2 Saved</Text>
-          </View>
-          <View style={[styles.campusDivider]} />
-          <View style={styles.campusStat}>
-            <Text style={styles.campusStatVal}>{activeUsersToday}</Text>
-            <Text style={styles.campusStatLabel}>Active Today</Text>
-          </View>
-        </View>
+     <View style={[styles.campusCard, { backgroundColor: "#1E1B4B" }]}>
+  <View style={styles.campusHeader}>
+    <Feather
+      name="globe"
+      size={16}
+      color="rgba(255,255,255,0.8)"
+    />
+    <Text style={styles.campusTitle}>
+      campus impact so far
+    </Text>
+  </View>
+
+  {/* 👇 ADD THIS WRAPPER */}
+      <View style={styles.campusStats}>
+      <View style={styles.campusStat}>
+        <Text style={styles.campusStatVal}>
+          {campusStats.totalBottles}
+        </Text>
+        <Text style={styles.campusStatLabel}>
+          Plastic Bottles
+        </Text>
       </View>
-    </ScrollView>
-  );
+
+      <View style={styles.campusStat}>
+        <Text style={styles.campusStatVal}>
+          {campusStats.totalCans}
+        </Text>
+        <Text style={styles.campusStatLabel}>
+          Aluminum Cans
+        </Text>
+      </View>
+
+      <View style={styles.campusStat}>
+        <Text style={styles.campusStatVal}>
+          {campusStats.totalUsers}
+        </Text>
+        <Text style={styles.campusStatLabel}>
+          Students
+        </Text>
+      </View>
+    </View>
+  </View>
+
+</ScrollView>
+);
 }
 
 // ... Stylesheets remain completely identical and perfectly configured!

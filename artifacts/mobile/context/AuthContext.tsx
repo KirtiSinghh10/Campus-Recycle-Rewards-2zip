@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
+import { api } from "@/services/api";
 import React, {
   createContext,
   useCallback,
@@ -21,7 +22,7 @@ export interface RecyclingSession {
 }
 
 export interface User {
-  id: string;
+  id: number | string;
   name: string;
   email: string;
   usn: string;
@@ -35,6 +36,7 @@ export interface User {
   level?: number;
   levelTitle?: string;
   levelProgressPercent?: number;
+  nextLevelPoints?: number;
   sessions: RecyclingSession[];
 }
 
@@ -79,6 +81,7 @@ interface AuthContextType {
   ) => Promise<SessionResult>;
   deductPoints: (amount: number) => Promise<void>;
   refreshLeaderboard: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const KEYS = {
@@ -104,14 +107,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const authenticated = await authService.isAuthenticated();
         if (authenticated) {
           try {
-            const profileData = await authService.getCurrentUser();
+            const profileRes = await api.get("/users/me");
 
-            // 🌟 FIXED: Add data guards so undefined arrays do not crash components
-            setUser({
-              ...profileData,
-              sessions: (profileData as any)?.sessions || [],
-              badges: (profileData as any)?.badges || [],
-            } as unknown as User);
+setUser({
+  ...profileRes.data,
+  sessions: profileRes.data.sessions || [],
+  badges: profileRes.data.badges || [],
+} as User);
           } catch (apiError) {
             console.warn(
               "Session token expired or backend unreachable. Logging out cleanly.",
@@ -147,15 +149,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       // 🌟 FIXED: Apply collection fallbacks on active authentication responses too
-      if (response && response.user) {
-        setUser({
-          ...response.user,
-          sessions: (response.user as any).sessions || [],
-          badges: (response.user as any).badges || [],
-        } as unknown as User);
-      } else {
-        setUser(response.user as unknown as User);
-      }
+     if (response?.user) {
+  const profileRes = await api.get("/users/me");
+
+  setUser({
+    ...profileRes.data,
+    sessions: profileRes.data.sessions || [],
+    badges: profileRes.data.badges || [],
+  } as User);
+}
 
       return { success: true };
     } catch (error: any) {
@@ -262,9 +264,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
   };
 
-  const refreshLeaderboard = async () => {
-    // Will pull global rankings dynamically via Phase 4 setup
-  };
+const refreshUser = useCallback(async () => {
+  try {
+    const profileRes = await api.get("/users/me");
+    setUser({
+      ...profileRes.data,
+      sessions: profileRes.data.sessions || [],
+      badges: profileRes.data.badges || [],
+    } as User);
+  } catch (error) {
+    console.error("Failed to refresh user profile:", error);
+  }
+}, []);
+
+const refreshLeaderboard = useCallback(async () => {
+  try {
+    const response = await api.get("/users/leaderboard");
+    if (response.data) {
+      const processedUsers = response.data.map((u: any) => ({
+        ...u,
+        sessions: [],
+        badges: u.badges || [],
+      }));
+      setAllUsers(processedUsers);
+    }
+  } catch (error) {
+    console.error("Failed to sync leaderboard:", error);
+  }
+}, []);
+
+useEffect(() => {
+  if (user) {
+    refreshLeaderboard();
+  }
+}, [user, refreshLeaderboard]);
 
   return (
     <AuthContext.Provider
@@ -281,6 +314,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         addRecyclingSession,
         deductPoints,
         refreshLeaderboard,
+        refreshUser,
       }}
     >
       {children}

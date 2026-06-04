@@ -15,6 +15,7 @@ export interface LoginData {
   password?: string;
 }
 
+// REPLACE the existing AuthResponse interface with this:
 export interface AuthResponse {
   token: string;
   user: {
@@ -23,7 +24,12 @@ export interface AuthResponse {
     name: string;
     points: number;
     level: number;
+    levelTitle: string;
+    levelProgressPercent: number;
+    nextLevelPoints: number;
+    avatarUrl?: string;
     usn?: string;
+    role?: string;
   };
 }
 
@@ -116,18 +122,21 @@ export const authService = {
   /**
    * Platform-agnostic Authentication Token Check
    */
-  isAuthenticated: (): boolean => {
-    // Note: React Native init check uses AuthContext's async state matching handler
-    if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined') {
+  isAuthenticated: async (): Promise<boolean> => {
+  try {
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined") {
         return !!localStorage.getItem(TOKEN_KEY);
       }
       return false;
     }
-    // Mobile synchronous fallback avoids a blank context frame split trace
-    return true; 
-  },
 
+    const token = await AsyncStorage.getItem(TOKEN_KEY);
+    return !!token;
+  } catch {
+    return false;
+  }
+},
   /**
    * Internal Helper to handle persistent key storage across Native Mobile and Web safely
    */

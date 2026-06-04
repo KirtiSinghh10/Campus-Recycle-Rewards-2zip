@@ -2,17 +2,19 @@ import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useCallback } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Platform,
   RefreshControl,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth, User } from "@/context/AuthContext";
-import { getLevelInfo } from "@/constants/gamification";
+import { api } from "@/services/api";
 import { useColors } from "@/hooks/useColors";
 
 function initials(name: string): string {
@@ -36,7 +38,6 @@ function LeaderboardRow({
   isCurrentUser: boolean;
 }) {
   const colors = useColors();
-  const levelInfo = getLevelInfo(user.points);
   const isMedal = rank <= 3;
 
   return (
@@ -95,7 +96,7 @@ function LeaderboardRow({
           )}
         </View>
         <Text style={[styles.usnText, { color: colors.mutedForeground }]}>
-          {user.usn} · {levelInfo.title}
+          {user.levelTitle || "Sapling"}
         </Text>
       </View>
 
@@ -114,18 +115,119 @@ function LeaderboardRow({
 export default function LeaderboardScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { allUsers, user, refreshLeaderboard } = useAuth();
+  const { user } = useAuth();
+  const [rows, setRows] = React.useState<User[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   const [refreshing, setRefreshing] = React.useState(false);
 
-  const sorted = [...allUsers].sort((a, b) => b.points - a.points);
+  const fetchLeaderboard = useCallback(async () => {
+    try {
+      setError(null);
+      const response = await api.get("/users/leaderboard");
+      const data = Array.isArray(response.data) ? response.data : [];
+      const sorted = [...data].sort((a: any, b: any) => b.points - a.points);
+      setRows(sorted);
+    } catch (err: any) {
+      console.error("Leaderboard fetch failed:", err?.response?.status, err?.message);
+      setError(
+        err?.response?.status === 401
+          ? "Session expired. Please log out and back in."
+          : err?.message === "Network Error"
+          ? "Cannot reach server. Check your connection."
+          : `Failed to load (${err?.response?.status ?? "unknown"})`
+      );
+    }
+  }, []);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      await fetchLeaderboard();
+      if (!cancelled) setLoading(false);
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refreshLeaderboard();
+    await fetchLeaderboard();
     setRefreshing(false);
-  }, [refreshLeaderboard]);
+  }, [fetchLeaderboard]);
 
-  const userRank = sorted.findIndex((u) => u.id === user?.id) + 1;
+  const userRank = rows.findIndex((u) => String(u.id) === String(user?.id)) + 1;
+
+  const renderBody = () => {
+    if (loading) {
+      return (
+        <View style={styles.centeredState}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.stateText, { color: colors.mutedForeground }]}>
+            Loading rankings…
+          </Text>
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <View style={styles.centeredState}>
+          <Feather name="wifi-off" size={36} color={colors.mutedForeground} />
+          <Text style={[styles.stateText, { color: colors.mutedForeground }]}>
+            {error}
+          </Text>
+          <TouchableOpacity
+            style={[styles.retryBtn, { backgroundColor: colors.primary }]}
+            onPress={async () => {
+              setLoading(true);
+              await fetchLeaderboard();
+              setLoading(false);
+            }}
+          >
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return (
+      <FlatList
+        data={rows}
+        keyExtractor={(item) => String(item.id)}
+        contentContainerStyle={[
+          styles.list,
+          {
+            paddingBottom:
+              Platform.OS === "web" ? 34 + 84 : insets.bottom + 100,
+          },
+        ]}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+        ListEmptyComponent={
+          <View style={styles.centeredState}>
+            <Text style={[styles.stateText, { color: colors.mutedForeground }]}>
+              No rankings yet. Pull to refresh.
+            </Text>
+          </View>
+        }
+        renderItem={({ item, index }) => (
+          <LeaderboardRow
+            user={item}
+            rank={index + 1}
+            isCurrentUser={String(item.id) === String(user?.id)}
+          />
+        )}
+        showsVerticalScrollIndicator={false}
+      />
+    );
+  };
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -146,39 +248,13 @@ export default function LeaderboardScreen() {
           <View style={styles.myRankChip}>
             <Feather name="trending-up" size={14} color="#FFFFFF" />
             <Text style={styles.myRankText}>
-              Your rank: #{userRank} of {sorted.length}
+              Your rank: #{userRank} of {rows.length}
             </Text>
           </View>
         )}
       </LinearGradient>
 
-      <FlatList
-        data={sorted}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={[
-          styles.list,
-          {
-            paddingBottom:
-              Platform.OS === "web" ? 34 + 84 : insets.bottom + 100,
-          },
-        ]}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-          />
-        }
-        renderItem={({ item, index }) => (
-          <LeaderboardRow
-            user={item}
-            rank={index + 1}
-            isCurrentUser={item.id === user?.id}
-          />
-        )}
-        scrollEnabled={sorted.length > 0}
-        showsVerticalScrollIndicator={false}
-      />
+      {renderBody()}
     </View>
   );
 }
@@ -219,6 +295,30 @@ const styles = StyleSheet.create({
     fontFamily: "Outfit_600SemiBold",
   },
   list: { paddingTop: 16, paddingHorizontal: 16, gap: 10 },
+  centeredState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 80,
+    gap: 14,
+    paddingHorizontal: 32,
+  },
+  stateText: {
+    fontSize: 14,
+    fontFamily: "Outfit_400Regular",
+    textAlign: "center",
+  },
+  retryBtn: {
+    borderRadius: 12,
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    marginTop: 4,
+  },
+  retryText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontFamily: "Outfit_700Bold",
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -227,14 +327,8 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     gap: 12,
   },
-  rankCol: {
-    width: 32,
-    alignItems: "center",
-  },
-  rankText: {
-    fontSize: 16,
-    fontFamily: "Outfit_700Bold",
-  },
+  rankCol: { width: 32, alignItems: "center" },
+  rankText: { fontSize: 16, fontFamily: "Outfit_700Bold" },
   avatar: {
     width: 44,
     height: 44,
@@ -242,46 +336,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarText: {
-    fontSize: 16,
-    fontFamily: "Outfit_700Bold",
-  },
+  avatarText: { fontSize: 16, fontFamily: "Outfit_700Bold" },
   nameCol: { flex: 1 },
-  nameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  userName: {
-    fontSize: 15,
-    fontFamily: "Outfit_600SemiBold",
-    flex: 1,
-  },
-  youBadge: {
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  userName: { fontSize: 15, fontFamily: "Outfit_600SemiBold", flex: 1 },
+  youBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
   youBadgeText: {
     color: "#FFFFFF",
     fontSize: 10,
     fontFamily: "Outfit_700Bold",
     letterSpacing: 0.5,
   },
-  usnText: {
-    fontSize: 12,
-    fontFamily: "Outfit_400Regular",
-    marginTop: 2,
-  },
-  pointsCol: {
-    alignItems: "flex-end",
-  },
-  pointsVal: {
-    fontSize: 18,
-    fontFamily: "Outfit_700Bold",
-  },
-  pointsLabel: {
-    fontSize: 11,
-    fontFamily: "Outfit_400Regular",
-  },
+  usnText: { fontSize: 12, fontFamily: "Outfit_400Regular", marginTop: 2 },
+  pointsCol: { alignItems: "flex-end" },
+  pointsVal: { fontSize: 18, fontFamily: "Outfit_700Bold" },
+  pointsLabel: { fontSize: 11, fontFamily: "Outfit_400Regular" },
 });

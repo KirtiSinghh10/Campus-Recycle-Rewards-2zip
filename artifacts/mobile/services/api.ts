@@ -7,7 +7,7 @@ const TOKEN_KEY = "user_token";
 
 export const api = axios.create({
   // Points cleanly to your active Spring Boot backend instance
-  baseURL: "https://campus-rewards-backend--jahnaviverma.replit.app/api",
+  baseURL: "https://campus-rewards--vermajahnavi06.replit.app/api",
   headers: {
     "Content-Type": "application/json",
   },

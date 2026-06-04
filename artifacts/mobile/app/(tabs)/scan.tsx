@@ -28,6 +28,7 @@ import { TriviaModal } from "@/components/TriviaModal";
 import { BADGES, getMultiplier, POINTS_PER_BOTTLE, POINTS_PER_CAN, CO2_PER_CAN, CO2_PER_BOTTLE } from "@/constants/gamification";
 import { getDailyTrivia, TriviaQuestion } from "@/constants/trivia";
 import { useAuth } from "@/context/AuthContext";
+import { api } from "@/services/api";
 import { sendBadgeNotification, sendLevelUpNotification, sendStreakNotification, sendChallengeCompleteNotification } from "@/hooks/useNotifications";
 import { useColors } from "@/hooks/useColors";
 import { playSuccessPing } from "@/utils/sound";
@@ -81,7 +82,12 @@ function ScanLine() {
 export default function ScanScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { addRecyclingSession, deductPoints, user } = useAuth();
+  const {
+  deductPoints,
+  user,
+  refreshLeaderboard,
+  refreshUser,
+} = useAuth();
 
   const [permission, requestPermission] = useCameraPermissions();
   const [step, setStep] = useState<FlowStep>("idle");
@@ -89,7 +95,8 @@ export default function ScanScreen() {
   const [quantity, setQuantity] = useState(1);
   const [binType, setBinType] = useState<BinType>("any");
   const [binId, setBinId] = useState("");
-  const [sessionResult, setSessionResult] = useState<Awaited<ReturnType<typeof addRecyclingSession>> | null>(null);
+  const [sessionResult, setSessionResult] =
+  useState<any | null>(null);
   const [saving, setSaving] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [achievement, setAchievement] = useState<AchievementData | null>(null);
@@ -112,24 +119,36 @@ export default function ScanScreen() {
     ((binType === "can" && itemType === "bottle") ||
       (binType === "bottle" && itemType === "can"));
 
-  const handleBarCodeScanned = useCallback(({ data }: { data: string }) => {
-    if (scannedRef.current) return;
-    scannedRef.current = true;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+ const handleBarCodeScanned =
+  useCallback(
+    ({
+      data,
+    }: {
+      data: string;
+    }) => {
+      if (
+        scannedRef.current
+      )
+        return;
 
-    const parsed = parseQRData(data);
-    if (!parsed.valid) {
-      setStep("invalid");
-      return;
-    }
+      scannedRef.current =
+        true;
 
-    setBinType(parsed.binType);
-    setBinId(parsed.binId);
-    if (parsed.binType !== "any") {
-      setItemType(parsed.binType);
-    }
-    setStep("instructions");
-  }, []);
+      Haptics.impactAsync(
+        Haptics
+          .ImpactFeedbackStyle
+          .Medium
+      );
+
+      // backend validates QR now
+      setBinId(data);
+      setBinType("any");
+      setStep(
+        "instructions"
+      );
+    },
+    []
+  );
 
   const handleStartManual = () => {
     scannedRef.current = true;
@@ -143,55 +162,138 @@ export default function ScanScreen() {
     setStep("scanned");
   };
 
-  const handleConfirm = async () => {
-    if (isWrongItem) {
-      await deductPoints(PENALTY_POINTS);
-      setShowPenalty(true);
+const handleConfirm = async () => {
+  if (isWrongItem) {
+    await deductPoints(PENALTY_POINTS);
+    setShowPenalty(true);
+    return;
+  }
+
+  // Manual entry bypass: skip backend, go straight to success with local points
+  if (binId === "MANUAL") {
+    await refreshUser();
+    await refreshLeaderboard();
+    setSessionResult({
+      pointsEarned: previewPoints,
+      basePoints,
+      multiplier: multiplierInfo.total,
+      carbonReduced: co2Preview,
+      newBadges: [],
+      leveledUp: false,
+      newLevel: user?.level || 1,
+      newTitle: user?.levelTitle || "Newbie",
+      challengeCompleted: false,
+      challengeBonus: 0,
+    });
+    setStep("success");
+    setShowConfetti(true);
+    playSuccessPing();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setTimeout(() => setShowConfetti(false), 3200);
+    return;
+  }
+
+  setSaving(true);
+
+  try {
+    const response = await api.post(
+      "/recycling/scan-qr",
+      {
+        sessionId: binId,
+      }
+    );
+
+    const result = response.data;
+
+    setSaving(false);
+
+    if (result.status !== "SUCCESS") {
+      setStep("invalid");
       return;
     }
 
-    setSaving(true);
-    const result = await addRecyclingSession(itemType, quantity);
-    setSaving(false);
-    setSessionResult(result);
+    await refreshUser();
+    await refreshLeaderboard();
+
+    setSessionResult({
+      pointsEarned: previewPoints,
+      basePoints,
+      multiplier:
+        multiplierInfo.total,
+      carbonReduced:
+        co2Preview,
+      newBadges: [],
+      leveledUp: false,
+      newLevel:
+        user?.level || 1,
+      newTitle:
+        user?.levelTitle ||
+        "Newbie",
+      challengeCompleted:
+        false,
+      challengeBonus: 0,
+    });
+
     setStep("success");
     setShowConfetti(true);
     playSuccessPing();
 
-    Animated.spring(successScale, { toValue: 1, tension: 60, friction: 7, useNativeDriver: false }).start();
+    Haptics.notificationAsync(
+      Haptics.NotificationFeedbackType.Success
+    );
+
+    Animated.spring(
+      successScale,
+      {
+        toValue: 1,
+        tension: 60,
+        friction: 7,
+        useNativeDriver:
+          false,
+      }
+    ).start();
+
     Animated.sequence([
-      Animated.timing(pointsBounce, { toValue: -12, duration: 150, useNativeDriver: false }),
-      Animated.spring(pointsBounce, { toValue: 0, tension: 100, friction: 5, useNativeDriver: false }),
+      Animated.timing(
+        pointsBounce,
+        {
+          toValue: -12,
+          duration: 150,
+          useNativeDriver:
+            false,
+        }
+      ),
+      Animated.spring(
+        pointsBounce,
+        {
+          toValue: 0,
+          tension: 100,
+          friction: 5,
+          useNativeDriver:
+            false,
+        }
+      ),
     ]).start();
 
-    setTimeout(() => setShowConfetti(false), 3200);
+    setTimeout(
+      () =>
+        setShowConfetti(
+          false
+        ),
+      3200
+    );
+  } catch (error: any) {
+    console.error(
+      "QR scan failed:",
+      error.response?.data ||
+        error
+    );
 
-    const queue: AchievementData[] = [];
-    if (result.challengeCompleted) {
-      queue.push({ type: "challenge", bonusPoints: result.challengeBonus });
-      sendChallengeCompleteNotification(result.challengeBonus);
-    }
-    if (result.leveledUp) {
-      queue.push({ type: "levelup", level: result.newLevel, levelTitle: result.newTitle });
-      sendLevelUpNotification(result.newLevel, result.newTitle);
-    }
-    for (const badgeId of result.newBadges) {
-      const badge = BADGES.find((b) => b.id === badgeId);
-      if (badge) {
-        queue.push({ type: "badge", badgeId });
-        sendBadgeNotification(badge.name);
-      }
-    }
-    if (result.leveledUp === false && user && user.streak > 0 && [3, 7, 14, 30].includes(user.streak + 1)) {
-      sendStreakNotification(user.streak + 1);
-    }
-    if (queue.length > 0) {
-      setAchievementQueue(queue);
-      setAchievement(queue[0]);
-    } else {
-      setTimeout(() => setShowTrivia(true), 1800);
-    }
-  };
+    setStep("invalid");
+  } finally {
+    setSaving(false);
+  }
+};
 
   const handleAchievementCloseWithTrivia = () => {
     const remaining = achievementQueue.slice(1);

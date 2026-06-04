@@ -4,63 +4,26 @@ import { useColors } from "@/hooks/useColors";
 
 interface MascotConfig {
   emoji: string;
-  name: string;
   tagline: string;
   bgColor: string;
   glowColor: string;
 }
 
 function getMascotForLevel(level: number): MascotConfig {
-  if (level <= 1) return {
-    emoji: "🌱",
-    name: "Sprout",
-    tagline: "just getting started...",
-    bgColor: "#DCFCE7",
-    glowColor: "#86EFAC",
-  };
-  if (level === 2) return {
-    emoji: "🌿",
-    name: "Sapling",
-    tagline: "the bins know your face.",
-    bgColor: "#D1FAE5",
-    glowColor: "#6EE7B7",
-  };
-  if (level === 3) return {
-    emoji: "🌳",
-    name: "Grove",
-    tagline: "the campus feels it.",
-    bgColor: "#ECFDF5",
-    glowColor: "#34D399",
-  };
-  if (level <= 5) return {
-    emoji: "🌲",
-    name: "Forest",
-    tagline: "recycling runs in your veins.",
-    bgColor: "#F0FDF4",
-    glowColor: "#4ADE80",
-  };
-  if (level <= 8) return {
-    emoji: "⚡🌲",
-    name: "Thundergrove",
-    tagline: "you're literally powering the planet.",
-    bgColor: "#FEFCE8",
-    glowColor: "#FDE047",
-  };
-  return {
-    emoji: "🏆🌳",
-    name: "EcoLegend",
-    tagline: "campus hall of fame. no cap.",
-    bgColor: "#FFF7ED",
-    glowColor: "#FB923C",
-  };
+  if (level <= 1) return { emoji: "🌱", tagline: "just getting started...", bgColor: "#DCFCE7", glowColor: "#86EFAC" };
+  if (level === 2) return { emoji: "🌿", tagline: "the bins know your face.", bgColor: "#D1FAE5", glowColor: "#6EE7B7" };
+  if (level === 3) return { emoji: "🌳", tagline: "the campus feels it.", bgColor: "#ECFDF5", glowColor: "#34D399" };
+  if (level === 4) return { emoji: "🌲", tagline: "recycling runs in your veins.", bgColor: "#F0FDF4", glowColor: "#4ADE80" };
+  return { emoji: "🏆🌳", tagline: "campus hall of fame. no cap.", bgColor: "#FFF7ED", glowColor: "#FB923C" };
 }
 
 interface MascotProps {
   level: number;
   streak: number;
+  levelTitle: string;
 }
 
-export function Mascot({ level, streak }: MascotProps) {
+export function Mascot({ level, streak, levelTitle }: MascotProps) {
   const colors = useColors();
   const mascot = getMascotForLevel(level);
   const floatAnim = useRef(new Animated.Value(0)).current;
@@ -99,7 +62,7 @@ export function Mascot({ level, streak }: MascotProps) {
 
       <View style={styles.info}>
         <View style={styles.nameRow}>
-          <Text style={[styles.mascotName, { color: colors.foreground }]}>{mascot.name}</Text>
+          <Text style={[styles.mascotName, { color: colors.foreground }]}>{levelTitle}</Text>
           <View style={[styles.levelPill, { backgroundColor: colors.secondary }]}>
             <Text style={[styles.levelPillText, { color: colors.primary }]}>Lv.{level}</Text>
           </View>
@@ -139,20 +102,11 @@ const styles = StyleSheet.create({
     borderRadius: 34,
     marginTop: -34,
   },
-  emoji: {
-    fontSize: 42,
-    lineHeight: 52,
-    width: 60,
-    textAlign: "center",
-  },
+  emoji: { fontSize: 42, lineHeight: 52, width: 60, textAlign: "center" },
   info: { flex: 1 },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 3 },
   mascotName: { fontSize: 17, fontFamily: "Outfit_700Bold" },
-  levelPill: {
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
+  levelPill: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
   levelPillText: { fontSize: 11, fontFamily: "Outfit_700Bold" },
   tagline: { fontSize: 13, fontFamily: "Outfit_400Regular", lineHeight: 19 },
   streakRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 5 },

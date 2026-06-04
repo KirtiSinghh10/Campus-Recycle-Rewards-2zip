@@ -288,6 +288,6 @@ export function computeChallengeProgress(
 }
 
 export const POINTS_PER_CAN = 10;
-export const POINTS_PER_BOTTLE = 15;
+export const POINTS_PER_BOTTLE = 10;
 export const CO2_PER_CAN = 0.08;
 export const CO2_PER_BOTTLE = 0.12;

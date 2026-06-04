@@ -131,12 +131,12 @@ export default function LoginScreen() {
             <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
           </View>
 
-          <Text style={[styles.label, { color: colors.mutedForeground }]}>USN or email</Text>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>email</Text>
           <View style={[styles.inputWrap, { borderColor: colors.border, backgroundColor: colors.input }]}>
             <Feather name="user" size={16} color={colors.mutedForeground} />
             <TextInput
               style={[styles.input, { color: colors.foreground }]}
-              placeholder="1BM22CS001 or yourname@bmsce.ac.in"
+              placeholder="yourname@bmsce.ac.in"
               placeholderTextColor={colors.mutedForeground}
               value={identifier}
               onChangeText={setIdentifier}

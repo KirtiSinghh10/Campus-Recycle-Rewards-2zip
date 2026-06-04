@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { useColors } from "@/hooks/useColors";
-import { getLevelInfo, BADGES } from "@/constants/gamification";
+import { BADGES } from "@/constants/gamification";
 
 interface ShareCardProps {
   visible: boolean;
@@ -23,6 +23,8 @@ interface ShareCardProps {
   totalSessions: number;
   carbonReduced: number;
   badges: string[];
+  level?: number;
+  levelTitle?: string;
 }
 
 function initials(name: string) {
@@ -40,10 +42,11 @@ export function ShareCard({
   totalSessions,
   carbonReduced,
   badges,
+  level,
+  levelTitle,
 }: ShareCardProps) {
   const colors = useColors();
   const slideAnim = useRef(new Animated.Value(300)).current;
-  const levelInfo = getLevelInfo(points);
   const earnedBadges = BADGES.filter((b) => badges.includes(b.id)).slice(0, 4);
 
   React.useEffect(() => {
@@ -103,7 +106,9 @@ export function ShareCard({
               <Text style={styles.cardUsn}>{usn}</Text>
               <View style={styles.levelRow}>
                 <View style={styles.levelPill}>
-                  <Text style={styles.levelPillText}>Lv.{levelInfo.level} · {levelInfo.title}</Text>
+                 <Text style={styles.levelPillText}>
+  Lv.{level || 1} · {levelTitle || "Newbie"}
+</Text>
                 </View>
                 {streak > 0 && (
                   <View style={styles.streakPill}>
